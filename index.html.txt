@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>REQ Processor</title>
+</head>
+<body>
+  <h1>Processador de REQ</h1>
+
+  <p>Carregar imagens:</p>
+  <input type="file" multiple>
+
+  <p>Carregar Excel OPI:</p>
+  <input type="file">
+
+  <p>Carregar Excel base:</p>
+  <input type="file">
+
+  <br><br>
+  <button onclick="processar()">Processar</button>
+
+  <h2 id="status"></h2>
+
+  <script>
+    function processar() {
+      document.getElementById("status").innerText = "Processamento iniciado...";
+    }
+  </script>
+</body>
+</html>
