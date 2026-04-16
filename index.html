@@ -97,8 +97,21 @@ async function processar() {
     }
   }
 
-  console.log(total);
-  status.innerText = "Concluído! Ver consola (F12)";
+let resultadoDiv = document.getElementById("resultado");
+
+resultadoDiv.innerHTML = `
+<h2>Resultado:</h2>
+<p>Acessórios: ${total.Acessorios}</p>
+<p>OPI: ${total.OPI}</p>
+<p>Vidro: ${total.Vidro}</p>
+<p>Perfis: ${total.Perfis}</p>
+<p>Madeira: ${total.Madeira}</p>
+<p>Chapas: ${total.Chapas}</p>
+<p>Montagens: ${total.Montagens}</p>
+<p>Fabrico: ${total.Fabrico}</p>
+`;
+
+status.innerText = "Concluído!";
 }
 </script>
 
