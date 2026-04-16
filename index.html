@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
   <title>REQ Processor</title>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
@@ -9,21 +10,28 @@
 
 <h1>Processador de REQ</h1>
 
+<p>Imagens das requisições:</p>
 <input type="file" id="images" multiple><br><br>
+
+<p>Excel da lista OPI:</p>
 <input type="file" id="opi"><br><br>
+
+<p>Excel base:</p>
 <input type="file" id="template"><br><br>
 
 <button onclick="processar()">Processar</button>
 
-<div id="resultado"></div>
-  
 <h2 id="status"></h2>
+<div id="resultado"></div>
 
 <script>
 let opiSet = new Set();
 
 function normalize(text) {
-  return text.toUpperCase().trim();
+  return String(text || "")
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .trim();
 }
 
 async function carregarOPI(file) {
@@ -32,7 +40,11 @@ async function carregarOPI(file) {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet);
 
-  opiSet = new Set(rows.map(r => normalize(r.Produto || "")));
+  opiSet = new Set(
+    rows
+      .map(r => normalize(r.Produto || r.Artigo || r.Codigo || r.Código || ""))
+      .filter(Boolean)
+  );
 }
 
 function classify(code) {
@@ -44,10 +56,26 @@ function classify(code) {
   return "Acessorios";
 }
 
+function extrairArtigos(line) {
+  const regex = /\b(HY-[A-Z0-9.]+|MP\d{2}[A-Z0-9.]+)\b/g;
+  return [...line.matchAll(regex)].map(m => normalize(m[1]));
+}
+
+function temMontagem(line) {
+  return /MONTA(GEM|GENS|QEM|QENS)/i.test(line);
+}
+
+function temFabrico(line) {
+  return /FABRICO/i.test(line);
+}
+
 async function processar() {
   const status = document.getElementById("status");
+  const resultadoDiv = document.getElementById("resultado");
   const files = document.getElementById("images").files;
   const opiFile = document.getElementById("opi").files[0];
+
+  resultadoDiv.innerHTML = "";
 
   if (!files.length) {
     status.innerText = "Carrega imagens";
@@ -72,46 +100,45 @@ async function processar() {
   for (let file of files) {
     status.innerText = "A processar " + file.name;
 
-    const result = await Tesseract.recognize(file, 'eng');
+    const result = await Tesseract.recognize(file, "eng");
     const text = result.data.text.toUpperCase();
-
     const lines = text.split("\n");
 
     for (let line of lines) {
-      const words = line.split(" ");
+      const artigos = extrairArtigos(line);
 
-      for (let word of words) {
-        let code = normalize(word);
+      if (!artigos.length) continue;
 
-        if (code.length < 4) continue;
-
-        let type = classify(code);
-
+      for (let artigo of artigos) {
+        const type = classify(artigo);
         if (total[type] !== undefined) {
-          total[type]++;
+          total[type] += 1;
         }
+      }
 
-        if (line.includes("MONTAGENS")) total.Montagens++;
-        if (line.includes("FABRICO")) total.Fabrico++;
+      if (temMontagem(line)) {
+        total.Montagens += artigos.length;
+      }
+
+      if (temFabrico(line)) {
+        total.Fabrico += artigos.length;
       }
     }
   }
 
-let resultadoDiv = document.getElementById("resultado");
+  resultadoDiv.innerHTML = `
+    <h2>Resultado:</h2>
+    <p>Acessórios: ${total.Acessorios}</p>
+    <p>OPI: ${total.OPI}</p>
+    <p>Vidro: ${total.Vidro}</p>
+    <p>Perfis: ${total.Perfis}</p>
+    <p>Madeira: ${total.Madeira}</p>
+    <p>Chapas: ${total.Chapas}</p>
+    <p>Montagens: ${total.Montagens}</p>
+    <p>Fabrico: ${total.Fabrico}</p>
+  `;
 
-resultadoDiv.innerHTML = `
-<h2>Resultado:</h2>
-<p>Acessórios: ${total.Acessorios}</p>
-<p>OPI: ${total.OPI}</p>
-<p>Vidro: ${total.Vidro}</p>
-<p>Perfis: ${total.Perfis}</p>
-<p>Madeira: ${total.Madeira}</p>
-<p>Chapas: ${total.Chapas}</p>
-<p>Montagens: ${total.Montagens}</p>
-<p>Fabrico: ${total.Fabrico}</p>
-`;
-
-status.innerText = "Concluído!";
+  status.innerText = "Concluído!";
 }
 </script>
 
