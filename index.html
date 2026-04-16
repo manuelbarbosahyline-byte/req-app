@@ -2,28 +2,103 @@
 <html>
 <head>
   <title>REQ Processor</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 </head>
 <body>
-  <h1>Processador de REQ</h1>
 
-  <p>Carregar imagens:</p>
-  <input type="file" multiple>
+<h1>Processador de REQ</h1>
 
-  <p>Carregar Excel OPI:</p>
-  <input type="file">
+<input type="file" id="images" multiple><br><br>
+<input type="file" id="opi"><br><br>
+<input type="file" id="template"><br><br>
 
-  <p>Carregar Excel base:</p>
-  <input type="file">
+<button onclick="processar()">Processar</button>
 
-  <br><br>
-  <button onclick="processar()">Processar</button>
+<h2 id="status"></h2>
 
-  <h2 id="status"></h2>
+<script>
+let opiSet = new Set();
 
-  <script>
-    function processar() {
-      document.getElementById("status").innerText = "Processamento iniciado...";
+function normalize(text) {
+  return text.toUpperCase().trim();
+}
+
+async function carregarOPI(file) {
+  const data = await file.arrayBuffer();
+  const workbook = XLSX.read(data);
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet);
+
+  opiSet = new Set(rows.map(r => normalize(r.Produto || "")));
+}
+
+function classify(code) {
+  if (opiSet.has(code)) return "OPI";
+  if (code.startsWith("MP04")) return "Vidro";
+  if (code.startsWith("MP06")) return "Madeira";
+  if (code.startsWith("MP01") && code.includes("BBGHL")) return "Perfis";
+  if (code.startsWith("MP01") && code.includes("ALU")) return "Chapas";
+  return "Acessorios";
+}
+
+async function processar() {
+  const status = document.getElementById("status");
+  const files = document.getElementById("images").files;
+  const opiFile = document.getElementById("opi").files[0];
+
+  if (!files.length) {
+    status.innerText = "Carrega imagens";
+    return;
+  }
+
+  if (opiFile) {
+    await carregarOPI(opiFile);
+  }
+
+  let total = {
+    Acessorios: 0,
+    OPI: 0,
+    Vidro: 0,
+    Perfis: 0,
+    Madeira: 0,
+    Chapas: 0,
+    Montagens: 0,
+    Fabrico: 0
+  };
+
+  for (let file of files) {
+    status.innerText = "A processar " + file.name;
+
+    const result = await Tesseract.recognize(file, 'eng');
+    const text = result.data.text.toUpperCase();
+
+    const lines = text.split("\n");
+
+    for (let line of lines) {
+      const words = line.split(" ");
+
+      for (let word of words) {
+        let code = normalize(word);
+
+        if (code.length < 4) continue;
+
+        let type = classify(code);
+
+        if (total[type] !== undefined) {
+          total[type]++;
+        }
+
+        if (line.includes("MONTAGENS")) total.Montagens++;
+        if (line.includes("FABRICO")) total.Fabrico++;
+      }
     }
-  </script>
+  }
+
+  console.log(total);
+  status.innerText = "Concluído! Ver consola (F12)";
+}
+</script>
+
 </body>
 </html>
