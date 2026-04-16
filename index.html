@@ -16,7 +16,7 @@
       background: white;
       padding: 20px;
       border-radius: 10px;
-      max-width: 1100px;
+      max-width: 1200px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.08);
     }
     h1, h2, h3 {
@@ -93,7 +93,7 @@
     <div class="row">
       <label><strong>Excel base ou Excel já atualizado:</strong></label><br>
       <input type="file" id="template" accept=".xlsx,.xls">
-      <div class="small">Podes usar o Excel base na primeira vez. Depois podes usar o Excel já gerado para acrescentar imagens novas.</div>
+      <div class="small">Na primeira vez usa o Excel base. Depois podes usar o Excel já gerado para acrescentar novas imagens.</div>
     </div>
 
     <div class="row">
@@ -108,7 +108,6 @@
 <script>
 let opiSet = new Set();
 let processedResults = [];
-let templateWorkbook = null;
 let outputWorkbook = null;
 
 function normalize(text) {
@@ -124,13 +123,18 @@ function startsWithLetters(value) {
 
 async function carregarOPI(file) {
   const data = await file.arrayBuffer();
-  const workbook = XLSX.read(data);
+  const workbook = XLSX.read(data, { type: "array" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
 
   opiSet = new Set(
     rows
-      .map(r => normalize(r.Produto || r.Artigo || r.Codigo || r.Código || r.codigo || r.artigo || r.produto || ""))
+      .map(r => normalize(
+        r.Produto || r.produto ||
+        r.Artigo || r.artigo ||
+        r.Codigo || r.codigo ||
+        r.Código || ""
+      ))
       .filter(Boolean)
   );
 }
@@ -149,13 +153,29 @@ function classify(code) {
   return "Acessorios";
 }
 
+/* Só aceitamos artigos com este aspeto:
+   - HY-....
+   - MP01..., MP04..., MP06..., etc
+*/
 function extrairArtigos(line) {
   const regex = /\b(HY-[A-Z0-9.]+|MP\d{2}[A-Z0-9.]+)\b/g;
   return [...line.matchAll(regex)].map(m => normalize(m[1]));
 }
 
+/* Ignora linhas que são cabeçalhos ou texto solto */
+function isNoiseLine(line) {
+  const upper = line.toUpperCase();
+  const noisePatterns = [
+    "ARTIGO", "DESCRI", "LOTE", "DIMENS", "QTD", "UN", "ARM", "PROJETO",
+    "FAS", "ANALITICA", "ORDEM", "UTILIZA", "TRATAMEN", "REFERENCIA",
+    "ANODIZA", "LACAGEM", "RAL "
+  ];
+  return noisePatterns.some(p => upper.includes(p));
+}
+
+/* Montagens com tolerância a OCR */
 function temMontagem(line) {
-  return /MONTA(GEM|GENS|QEM|QENS|OEM|OENS)/i.test(line);
+  return /MONTA(GEM|GENS|QEM|QENS|OEM|OENS|GAEM|GAENS)/i.test(line);
 }
 
 function temFabrico(line) {
@@ -188,9 +208,12 @@ async function processSingleImage(file) {
   const counts = blankResult(file.name);
   let totalDetectedRows = 0;
 
-  for (let line of lines) {
-    const artigos = extrairArtigos(line);
+  for (let rawLine of lines) {
+    const line = String(rawLine || "").trim();
+    if (!line) continue;
+    if (isNoiseLine(line)) continue;
 
+    const artigos = extrairArtigos(line);
     if (!artigos.length) continue;
 
     totalDetectedRows += artigos.length;
@@ -200,6 +223,7 @@ async function processSingleImage(file) {
       if (counts[type] !== undefined) {
         counts[type] += 1;
       }
+
       if (startsWithLetters(artigo)) {
         counts.Projeto = "TRUE";
       }
@@ -286,6 +310,7 @@ function renderResults(results) {
           <th>Fabrico</th>
           <th>Projeto</th>
           <th>Status OCR</th>
+          <th>Linhas OCR</th>
         </tr>
       </thead>
       <tbody>
@@ -306,6 +331,7 @@ function renderResults(results) {
         <td>${row.Fabrico}</td>
         <td>${row.Projeto}</td>
         <td class="${row.OCR_Status === 'OK' ? 'ok' : 'warn'}">${row.OCR_Status}</td>
+        <td>${row.OCR_Linhas}</td>
       </tr>
     `;
   }
@@ -346,7 +372,7 @@ async function processar() {
     await carregarOPI(opiFile);
 
     status.innerText = "A carregar Excel...";
-    templateWorkbook = await carregarWorkbook(templateFile);
+    const templateWorkbook = await carregarWorkbook(templateFile);
 
     const newRows = [];
 
@@ -381,8 +407,7 @@ function exportarExcel() {
     return;
   }
 
-  const fileName = "REQ_processadas_atualizado.xlsx";
-  XLSX.writeFile(outputWorkbook, fileName);
+  XLSX.writeFile(outputWorkbook, "REQ_processadas_atualizado.xlsx");
 }
 </script>
 </body>
